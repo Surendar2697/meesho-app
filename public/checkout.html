@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Checkout | Meesho</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- ✅ Firebase Setup -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+    import {
+      getFirestore,
+      doc,
+      getDoc
+    } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSy27hHygBAzrsB0",
+      authDomain: "meesho-srebaseapp.com",
+      projectId: "meesho-scraper-97",
+      storageBucket: "meesho-scrapebasestorage.app",
+      messagingSenderId: "586471948107",
+      appId: "1:586471948107:web:0fa9814a615fc4f79672ce",
+      measurementId: "G-FJ7ZEQMVYX"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.firebaseModules = { db, doc, getDoc };
+  </script>
+</head>
+<body class="bg-gray-100 p-6">
+
+  <!-- ✅ Breadcrumb Navigation -->
+  <div class="max-w-4xl mx-auto mb-4 text-sm text-gray-500">
+    <a href="index.html" class="hover:text-purple-700">Home</a> &gt; <span class="text-purple-700 font-medium">Checkout</span>
+  </div>
+
+  <!-- ✅ Main Checkout Card -->
+  <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
+    <h1 class="text-2xl font-bold mb-6 text-purple-700">Checkout</h1>
+    <div id="cartItems" class="space-y-4"></div>
+
+    <div class="text-right mt-6">
+      <h2 class="text-xl font-semibold">Total: ₹<span id="cartTotal">0</span></h2>
+      <button onclick="buyNow()" class="mt-4 px-6 py-3 bg-pink-600 text-white rounded hover:bg-pink-700">
+        Buy Now
+      </button>
+    </div>
+  </div>
+
+  <!-- ✅ Main Logic -->
+  <script>
+    const cartItemsContainer = document.getElementById('cartItems');
+    const cartTotalElement = document.getElementById('cartTotal');
+
+    async function waitForFirebase() {
+      while (!window.firebaseModules) {
+        await new Promise(res => setTimeout(res, 100));
+      }
+      const { db, doc, getDoc } = window.firebaseModules;
+      loadCart(db, doc, getDoc);
+    }
+
+    async function loadCart(db, doc, getDoc) {
+      const cart = JSON.parse(localStorage.getItem("cart")) || [];
+      if (cart.length === 0) {
+        cartItemsContainer.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
+        cartTotalElement.textContent = '0';
+        return;
+      }
+
+      let total = 0;
+      cartItemsContainer.innerHTML = "";
+
+      for (const item of cart) {
+        const docRef = doc(db, "meesho_products", item.id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) continue;
+
+        const product = docSnap.data();
+        const price = parseFloat(product.price) || 0;
+        const qty = parseInt(item.quantity) || 1;
+        const subtotal = price * qty;
+        total += subtotal;
+
+        const div = document.createElement("div");
+        div.id = `cart-row-${item.id}`;
+        div.className = "flex items-center justify-between border p-4 rounded";
+
+        div.innerHTML = `
+          <div class="flex items-center gap-4">
+            <img src="${product.product_images?.[0] || 'https://via.placeholder.com/80'}" class="w-20 h-20 object-cover rounded"/>
+            <div>
+              <h2 class="font-semibold">${product.product_name}</h2>
+              <p class="text-gray-600">₹${price.toLocaleString()}</p>
+              <div class="flex items-center mt-2 gap-2">
+                <button onclick="updateQty('${item.id}', -1)" class="px-2 py-1 bg-gray-200 rounded">-</button>
+                <span id="qty-${item.id}">${qty}</span>
+                <button onclick="updateQty('${item.id}', 1)" class="px-2 py-1 bg-gray-200 rounded">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="text-right">
+            <p>Subtotal: ₹<span id="subtotal-${item.id}">${subtotal.toLocaleString()}</span></p>
+            <button onclick="removeFromCart('${item.id}')" class="mt-2 text-red-500 hover:underline text-sm">Remove</button>
+          </div>
+        `;
+        cartItemsContainer.appendChild(div);
+      }
+
+      cartTotalElement.textContent = total.toLocaleString();
+    }
+
+    function updateQty(id, change) {
+      let cart = JSON.parse(localStorage.getItem("cart")) || [];
+      const index = cart.findIndex(item => item.id === id);
+      if (index === -1) return;
+
+      cart[index].quantity += change;
+      if (cart[index].quantity < 1) cart[index].quantity = 1;
+      localStorage.setItem("cart", JSON.stringify(cart));
+
+      const qty = cart[index].quantity;
+      document.getElementById(`qty-${id}`).textContent = qty;
+
+      const priceText = document.querySelector(`#cart-row-${id} p.text-gray-600`)?.textContent || "0";
+      const price = parseFloat(priceText.replace(/[₹,]/g, "")) || 0;
+      const subtotal = price * qty;
+
+      document.getElementById(`subtotal-${id}`).textContent = subtotal.toLocaleString();
+
+      updateTotal();
+    }
+
+    function removeFromCart(id) {
+      let cart = JSON.parse(localStorage.getItem("cart")) || [];
+      cart = cart.filter(item => item.id !== id);
+      localStorage.setItem("cart", JSON.stringify(cart));
+
+      const itemEl = document.getElementById(`cart-row-${id}`);
+      if (itemEl) itemEl.remove();
+
+      updateTotal();
+
+      if (cart.length === 0) {
+        cartItemsContainer.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
+        cartTotalElement.textContent = '0';
+      }
+    }
+
+    function updateTotal() {
+      const cart = JSON.parse(localStorage.getItem("cart")) || [];
+      let total = 0;
+
+      cart.forEach(item => {
+        const priceText = document.querySelector(`#cart-row-${item.id} p.text-gray-600`)?.textContent || "0";
+        const price = parseFloat(priceText.replace(/[₹,]/g, "")) || 0;
+        const qty = parseInt(item.quantity) || 1;
+        total += price * qty;
+      });
+
+      cartTotalElement.textContent = total.toLocaleString();
+    }
+
+    function buyNow() {
+      Swal.fire({
+        icon: "success",
+        title: "Order placed!",
+        text: "Thank you for shopping with us.",
+      });
+      localStorage.removeItem("cart");
+      cartItemsContainer.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
+      cartTotalElement.textContent = '0';
+    }
+
+    waitForFirebase();
+  </script>
+</body>
+</html>
