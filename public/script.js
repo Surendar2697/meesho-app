@@ -710,3 +710,325 @@ document.addEventListener('keydown', function (e) {
     }
   }
 });
+
+// Add this to your existing script.js file after the existing product page logic
+
+// Update the Buy Now button event listener in the product page section
+document.getElementById('buyNowBtn').addEventListener('click', () => {
+  // Check if user is logged in
+  const isLoggedIn = localStorage.getItem('isLoggedIn');
+
+  if (isLoggedIn !== 'true') {
+    // User not logged in, redirect to login page
+    Swal.fire({
+      icon: 'warning',
+      title: 'Login Required',
+      text: 'Please login to place your order.',
+      showCancelButton: true,
+      confirmButtonText: 'Login Now',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#9333ea'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        // Redirect to login page with current page as redirect
+        window.location.href = 'login.html?redirect=checkout.html';
+      }
+    });
+    return;
+  }
+
+  // User is logged in, proceed with Buy Now
+  const quantity = document.getElementById('quantityValue').textContent;
+  addToCart(productId, parseInt(quantity));
+  window.location.href = 'checkout.html';
+});
+
+// Update the existing addToCart function to work with authentication
+function addToCart(productId, quantity = 1) {
+  const cart = JSON.parse(localStorage.getItem('cart')) || [];
+  const existingItem = cart.find(item => item.id === productId);
+
+  if (existingItem) {
+    existingItem.quantity += quantity;
+  } else {
+    cart.push({ id: productId, quantity });
+  }
+
+  localStorage.setItem('cart', JSON.stringify(cart));
+  updateCartCount();
+  return true;
+}
+
+// Add authentication utilities to the global scope
+if (typeof window.AuthUtils === 'undefined') {
+  window.AuthUtils = {
+    // Check if user is logged in
+    isLoggedIn() {
+      return localStorage.getItem('isLoggedIn') === 'true';
+    },
+
+    // Get current user data
+    getCurrentUser() {
+      const userData = localStorage.getItem('currentUser');
+      return userData ? JSON.parse(userData) : null;
+    },
+
+    // Logout user
+    logout() {
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('isLoggedIn');
+      window.location.href = 'login.html';
+    },
+
+    // Redirect to login with current page as redirect
+    redirectToLogin() {
+      const currentPage = window.location.pathname.split('/').pop();
+      window.location.href = `login.html?redirect=${currentPage}`;
+    }
+  };
+}
+
+// Add this to the BOTTOM of your existing script.js file
+
+// ==========================================
+// AUTHENTICATION INTEGRATION
+// ==========================================
+
+// Update the existing Buy Now button event listener in product page
+if (document.getElementById('productContainer')) {
+  // Replace the existing buyNowBtn event listener with this:
+  document.getElementById('buyNowBtn')?.addEventListener('click', () => {
+    // Check if user is logged in first
+    const isLoggedIn = localStorage.getItem('isLoggedIn');
+    
+    if (isLoggedIn !== 'true') {
+      // User not logged in, show login prompt
+      Swal.fire({
+        icon: 'warning',
+        title: 'Login Required',
+        text: 'Please login to place your order.',
+        showCancelButton: true,
+        confirmButtonText: 'Login Now',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#9333ea',
+        cancelButtonColor: '#6b7280'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          // Redirect to login page with checkout as redirect
+          window.location.href = 'login.html?redirect=checkout.html';
+        }
+      });
+      return;
+    }
+
+    // User is logged in, proceed with Buy Now
+    const quantity = parseInt(document.getElementById('quantityValue')?.textContent || '1');
+    const urlParams = new URLSearchParams(window.location.search);
+    const productId = urlParams.get('id');
+    
+    if (productId) {
+      addToCart(productId, quantity);
+      window.location.href = 'checkout.html';
+    }
+  });
+}
+
+// Add authentication check to existing addToCart function calls
+const originalAddToCart = window.addToCart;
+window.addToCart = function(productId, quantity = 1) {
+  // Check authentication for direct add to cart (optional - you can remove this if you want guest cart)
+  // const isLoggedIn = localStorage.getItem('isLoggedIn');
+  // if (isLoggedIn !== 'true') {
+  //   Swal.fire({
+  //     icon: 'info',
+  //     title: 'Login for Better Experience',
+  //     text: 'Login to sync your cart across devices!',
+  //     confirmButtonText: 'Login',
+  //     showCancelButton: true,
+  //     cancelButtonText: 'Continue as Guest'
+  //   }).then((result) => {
+  //     if (result.isConfirmed) {
+  //       window.location.href = 'login.html';
+  //       return;
+  //     }
+  //   });
+  // }
+
+  // Call original addToCart function
+  const cart = JSON.parse(localStorage.getItem('cart')) || [];
+  const existingItem = cart.find(item => item.id === productId);
+
+  if (existingItem) {
+    existingItem.quantity += quantity;
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'info',
+      title: 'Quantity updated in cart',
+      showConfirmButton: false,
+      timer: 2000,
+      timerProgressBar: true
+    });
+  } else {
+    cart.push({ id: productId, quantity });
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: 'Added to cart successfully',
+      showConfirmButton: false,
+      timer: 2000,
+      timerProgressBar: true
+    });
+  }
+
+  localStorage.setItem('cart', JSON.stringify(cart));
+  updateCartCount();
+  return true;
+};
+
+// Add user info display to header (for index and product pages)
+function displayUserInfo() {
+  const isLoggedIn = localStorage.getItem('isLoggedIn');
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  
+  if (isLoggedIn === 'true' && currentUser) {
+    // Find header navigation area and add user info
+    const headerNav = document.querySelector('.flex.items-center.space-x-4, .hidden.md\\:flex.items-center.space-x-6');
+    
+    if (headerNav && !document.getElementById('userGreeting')) {
+      const userDiv = document.createElement('div');
+      userDiv.id = 'userGreeting';
+      userDiv.className = 'flex items-center space-x-2 text-sm';
+      userDiv.innerHTML = `
+        <span class="text-gray-600">Hi, ${currentUser.firstName}</span>
+        <button onclick="AuthUtils.logout()" class="text-red-600 hover:underline">Logout</button>
+      `;
+      
+      // Insert before cart icon
+      const cartIcon = headerNav.querySelector('a[href="checkout.html"]');
+      if (cartIcon) {
+        headerNav.insertBefore(userDiv, cartIcon);
+      } else {
+        headerNav.appendChild(userDiv);
+      }
+    }
+  }
+}
+
+// Add global authentication utilities
+if (typeof window.AuthUtils === 'undefined') {
+  window.AuthUtils = {
+    // Check if user is logged in
+    isLoggedIn() {
+      return localStorage.getItem('isLoggedIn') === 'true';
+    },
+
+    // Get current user data
+    getCurrentUser() {
+      const userData = localStorage.getItem('currentUser');
+      return userData ? JSON.parse(userData) : null;
+    },
+
+    // Logout user
+    logout() {
+      Swal.fire({
+        title: 'Logout',
+        text: 'Are you sure you want to logout?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Yes, logout'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          localStorage.removeItem('currentUser');
+          localStorage.removeItem('isLoggedIn');
+          Swal.fire({
+            icon: 'success',
+            title: 'Logged out successfully',
+            timer: 1500,
+            showConfirmButton: false
+          }).then(() => {
+            window.location.href = 'index.html';
+          });
+        }
+      });
+    },
+
+    // Redirect to login with current page as redirect
+    redirectToLogin() {
+      const currentPage = window.location.pathname.split('/').pop();
+      window.location.href = `login.html?redirect=${currentPage}`;
+    },
+
+    // Show login prompt
+    promptLogin(message = 'Please login to continue') {
+      Swal.fire({
+        icon: 'info',
+        title: 'Login Required',
+        text: message,
+        showCancelButton: true,
+        confirmButtonText: 'Login',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#9333ea'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          this.redirectToLogin();
+        }
+      });
+    }
+  };
+}
+
+// Initialize user info display on page load
+document.addEventListener('DOMContentLoaded', () => {
+  // Wait a bit for the page to fully load
+  setTimeout(displayUserInfo, 500);
+});
+
+// ==========================================
+// ENHANCED CART FUNCTIONALITY
+// ==========================================
+
+// Sync cart with user account (when user logs in)
+function syncCartWithUser() {
+  const isLoggedIn = localStorage.getItem('isLoggedIn');
+  const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+  
+  if (isLoggedIn === 'true' && cart.length > 0) {
+    // Here you could sync cart to user's account in Firebase
+    // For now, we'll just show a success message
+    console.log('Cart synced with user account');
+  }
+}
+
+// Enhanced updateCartCount function
+const originalUpdateCartCount = window.updateCartCount;
+window.updateCartCount = function() {
+  const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+  const cartCountElements = document.querySelectorAll('#cartCount');
+  
+  cartCountElements.forEach(element => {
+    const totalItems = cart.reduce((total, item) => total + (parseInt(item.quantity) || 0), 0);
+    element.textContent = totalItems;
+    element.style.display = totalItems > 0 ? 'flex' : 'none';
+    
+    // Add animation when cart count changes
+    if (totalItems > 0) {
+      element.classList.add('animate-bounce');
+      setTimeout(() => {
+        element.classList.remove('animate-bounce');
+      }, 600);
+    }
+  });
+};
+
+// Call sync function when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  syncCartWithUser();
+});
+
+console.log('🚀 Meesho Authentication System Loaded Successfully!');
+console.log('📱 Features: Phone Auth, User Management, Secure Checkout');
+console.log('🔐 Auth Status:', window.AuthUtils?.isLoggedIn() ? 'Logged In' : 'Guest User');

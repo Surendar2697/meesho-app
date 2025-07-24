@@ -6,6 +6,7 @@
   <title>Checkout | Meesho</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
   <!-- ✅ Firebase Setup -->
   <script type="module">
@@ -13,7 +14,10 @@
     import {
       getFirestore,
       doc,
-      getDoc
+      getDoc,
+      collection,
+      addDoc,
+      serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -28,47 +32,321 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    window.firebaseModules = { db, doc, getDoc };
+    window.firebaseModules = { db, doc, getDoc, collection, addDoc, serverTimestamp };
   </script>
 </head>
-<body class="bg-gray-100 p-6">
+<body class="bg-gray-100">
 
-  <!-- ✅ Breadcrumb Navigation -->
-  <div class="max-w-4xl mx-auto mb-4 text-sm text-gray-500">
-    <a href="index.html" class="hover:text-purple-700">Home</a> &gt; <span class="text-purple-700 font-medium">Checkout</span>
+  <!-- Header -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-4">
+      <div class="flex items-center justify-between">
+        <a href="index.html" class="text-2xl font-bold text-purple-700 flex items-center">
+          <i class="fas fa-shopping-bag mr-2"></i> Meesho
+        </a>
+        <div class="flex items-center space-x-4">
+          <div id="userInfo" class="hidden">
+            <span class="text-gray-600">Welcome, <span id="userName" class="font-medium"></span></span>
+            <button onclick="logout()" class="ml-4 text-sm text-red-600 hover:underline">Logout</button>
+          </div>
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-shield-alt text-green-600"></i>
+            <span class="text-sm text-gray-600">Secure Checkout</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Breadcrumb Navigation -->
+  <div class="max-w-6xl mx-auto px-4 py-4">
+    <div class="text-sm text-gray-500">
+      <a href="index.html" class="hover:text-purple-700">Home</a> &gt; 
+      <a href="checkout.html" class="text-purple-700 font-medium">Checkout</a>
+    </div>
   </div>
 
-  <!-- ✅ Main Checkout Card -->
-  <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
-    <h1 class="text-2xl font-bold mb-6 text-purple-700">Checkout</h1>
-    <div id="cartItems" class="space-y-4"></div>
+  <!-- Main Checkout Container -->
+  <div class="max-w-6xl mx-auto px-4 pb-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      
+      <!-- Left Column: Cart Items & Delivery Address -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Cart Items Section -->
+        <div class="bg-white rounded-lg shadow-sm">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-xl font-semibold flex items-center">
+              <i class="fas fa-shopping-cart mr-2 text-purple-600"></i>
+              Your Items
+            </h2>
+          </div>
+          <div id="cartItems" class="p-6">
+            <div class="flex justify-center py-8">
+              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+            </div>
+          </div>
+        </div>
 
-    <div class="text-right mt-6">
-      <h2 class="text-xl font-semibold">Total: ₹<span id="cartTotal">0</span></h2>
-      <button onclick="buyNow()" class="mt-4 px-6 py-3 bg-pink-600 text-white rounded hover:bg-pink-700">
-        Buy Now
-      </button>
+        <!-- Delivery Address Section -->
+        <div id="addressSection" class="bg-white rounded-lg shadow-sm">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-xl font-semibold flex items-center">
+              <i class="fas fa-map-marker-alt mr-2 text-purple-600"></i>
+              Delivery Address
+            </h2>
+          </div>
+          <div class="p-6">
+            <div id="selectedAddress" class="hidden">
+              <div class="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center mb-2">
+                      <span id="addressName" class="font-medium text-gray-800"></span>
+                      <span id="addressType" class="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full"></span>
+                    </div>
+                    <p id="addressFull" class="text-gray-600 text-sm leading-relaxed"></p>
+                    <p class="text-sm text-gray-500 mt-1">
+                      Phone: <span id="addressPhone"></span>
+                    </p>
+                  </div>
+                  <button onclick="changeAddress()" class="text-purple-600 hover:text-purple-700 text-sm font-medium">
+                    Change
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="addressSelector" class="hidden">
+              <div id="addressList" class="space-y-3"></div>
+              <button onclick="showAddAddressForm()" class="mt-4 flex items-center text-purple-600 hover:text-purple-700 font-medium">
+                <i class="fas fa-plus mr-2"></i>
+                Add New Address
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Order Summary -->
+      <div class="lg:col-span-1">
+        <div class="bg-white rounded-lg shadow-sm sticky top-24">
+          <div class="p-6 border-b border-gray-200">
+            <h2 class="text-xl font-semibold flex items-center">
+              <i class="fas fa-receipt mr-2 text-purple-600"></i>
+              Order Summary
+            </h2>
+          </div>
+          <div class="p-6 space-y-4">
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Items Total:</span>
+              <span id="itemsTotal">₹0</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Delivery Charges:</span>
+              <span id="deliveryCharges" class="text-green-600">FREE</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Packaging Charges:</span>
+              <span>₹29</span>
+            </div>
+            <hr class="border-gray-200">
+            <div class="flex justify-between text-lg font-semibold">
+              <span>Total Amount:</span>
+              <span id="totalAmount" class="text-purple-700">₹0</span>
+            </div>
+            <div class="mt-6">
+              <button 
+                id="placeOrderBtn"
+                onclick="placeOrder()" 
+                class="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center"
+                disabled
+              >
+                <i class="fas fa-lock mr-2"></i>
+                <span>Place Order</span>
+              </button>
+              <p class="text-xs text-gray-500 mt-2 text-center">
+                <i class="fas fa-shield-alt mr-1"></i>
+                Your payment information is secure
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Methods -->
+        <div class="bg-white rounded-lg shadow-sm mt-6">
+          <div class="p-6 border-b border-gray-200">
+            <h3 class="font-semibold flex items-center">
+              <i class="fas fa-credit-card mr-2 text-purple-600"></i>
+              Payment Options
+            </h3>
+          </div>
+          <div class="p-6">
+            <div class="space-y-3">
+              <label class="flex items-center">
+                <input type="radio" name="payment" value="cod" checked class="text-purple-600">
+                <span class="ml-3 flex items-center">
+                  <i class="fas fa-money-bill-wave mr-2 text-green-600"></i>
+                  Cash on Delivery
+                </span>
+              </label>
+              <label class="flex items-center opacity-50">
+                <input type="radio" name="payment" value="online" disabled class="text-purple-600">
+                <span class="ml-3 flex items-center">
+                  <i class="fas fa-credit-card mr-2 text-blue-600"></i>
+                  Online Payment (Coming Soon)
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Login Required Modal -->
+  <div id="loginModal" class="fixed inset-0 z-50 hidden bg-black bg-opacity-50 flex items-center justify-center px-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+      <div class="text-center">
+        <div class="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-user-lock text-2xl text-purple-600"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">Login Required</h2>
+        <p class="text-gray-600 mb-6">Please login to continue with your order</p>
+        <div class="flex space-x-4">
+          <button 
+            onclick="redirectToLogin()" 
+            class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+          >
+            Login
+          </button>
+          <button 
+            onclick="hideLoginModal()" 
+            class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div id="successModal" class="fixed inset-0 z-50 hidden bg-black bg-opacity-50 flex items-center justify-center px-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+      <div class="text-center">
+        <div class="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-check text-2xl text-green-600"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">Order Placed!</h2>
+        <p class="text-gray-600 mb-4">Your order has been placed successfully</p>
+        <p class="text-sm text-gray-500 mb-6">Order ID: <span id="orderId" class="font-mono font-medium"></span></p>
+        <button 
+          onclick="goToHome()" 
+          class="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+        >
+          Continue Shopping
+        </button>
+      </div>
     </div>
   </div>
 
   <!-- ✅ Main Logic -->
   <script>
+    let currentUser = null;
+    let currentCart = [];
+    let totalAmount = 0;
+
+    // DOM elements
     const cartItemsContainer = document.getElementById('cartItems');
-    const cartTotalElement = document.getElementById('cartTotal');
+    const itemsTotalElement = document.getElementById('itemsTotal');
+    const totalAmountElement = document.getElementById('totalAmount');
+    const placeOrderBtn = document.getElementById('placeOrderBtn');
+    const userInfo = document.getElementById('userInfo');
+    const userName = document.getElementById('userName');
 
     async function waitForFirebase() {
       while (!window.firebaseModules) {
         await new Promise(res => setTimeout(res, 100));
       }
-      const { db, doc, getDoc } = window.firebaseModules;
-      loadCart(db, doc, getDoc);
+      const { db, doc, getDoc, collection, addDoc, serverTimestamp } = window.firebaseModules;
+      initializeCheckout(db, doc, getDoc, collection, addDoc, serverTimestamp);
+    }
+
+    async function initializeCheckout(db, doc, getDoc, collection, addDoc, serverTimestamp) {
+      // Check if user is logged in
+      if (!checkAuthStatus()) {
+        return;
+      }
+
+      // Load cart and user info
+      await loadCart(db, doc, getDoc);
+      loadUserInfo();
+      loadUserAddress();
+    }
+
+    function checkAuthStatus() {
+      const isLoggedIn = localStorage.getItem('isLoggedIn');
+      const userData = localStorage.getItem('currentUser');
+
+      if (isLoggedIn !== 'true' || !userData) {
+        // User not logged in, redirect to login
+        showLoginModal();
+        return false;
+      }
+
+      currentUser = JSON.parse(userData);
+      return true;
+    }
+
+    function loadUserInfo() {
+      if (currentUser) {
+        userName.textContent = currentUser.firstName;
+        userInfo.classList.remove('hidden');
+      }
+    }
+
+    function loadUserAddress() {
+      if (currentUser && currentUser.addresses && currentUser.addresses.length > 0) {
+        const defaultAddress = currentUser.addresses.find(addr => addr.isDefault) || currentUser.addresses[0];
+        displaySelectedAddress(defaultAddress);
+      }
+    }
+
+    function displaySelectedAddress(address) {
+      document.getElementById('addressName').textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+      document.getElementById('addressType').textContent = address.type.toUpperCase();
+      document.getElementById('addressPhone').textContent = currentUser.phoneNumber;
+      
+      const fullAddress = `${address.addressLine1}, ${address.addressLine2 ? address.addressLine2 + ', ' : ''}${address.city}, ${address.district}, ${address.state} - ${address.pincode}`;
+      document.getElementById('addressFull').textContent = fullAddress;
+      
+      document.getElementById('selectedAddress').classList.remove('hidden');
+      document.getElementById('addressSelector').classList.add('hidden');
+      
+      // Enable place order button if cart has items
+      if (currentCart.length > 0) {
+        placeOrderBtn.disabled = false;
+      }
     }
 
     async function loadCart(db, doc, getDoc) {
       const cart = JSON.parse(localStorage.getItem("cart")) || [];
+      currentCart = cart;
+
       if (cart.length === 0) {
-        cartItemsContainer.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
-        cartTotalElement.textContent = '0';
+        cartItemsContainer.innerHTML = `
+          <div class="text-center py-12">
+            <i class="fas fa-shopping-cart text-4xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 text-lg">Your cart is empty</p>
+            <a href="index.html" class="mt-4 inline-block bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700">
+              Continue Shopping
+            </a>
+          </div>
+        `;
+        itemsTotalElement.textContent = '₹0';
+        totalAmountElement.textContent = '₹29';
         return;
       }
 
@@ -87,31 +365,44 @@
         total += subtotal;
 
         const div = document.createElement("div");
-        div.id = `cart-row-${item.id}`;
-        div.className = "flex items-center justify-between border p-4 rounded";
+        div.className = "flex items-center justify-between border-b border-gray-200 pb-4 mb-4 last:border-b-0 last:pb-0 last:mb-0";
 
         div.innerHTML = `
           <div class="flex items-center gap-4">
-            <img src="${product.product_images?.[0] || 'https://via.placeholder.com/80'}" class="w-20 h-20 object-cover rounded"/>
-            <div>
-              <h2 class="font-semibold">${product.product_name}</h2>
-              <p class="text-gray-600">₹${price.toLocaleString()}</p>
+            <img src="${product.product_images?.[0] || 'https://via.placeholder.com/80'}" 
+                 class="w-20 h-20 object-cover rounded-lg border border-gray-200"/>
+            <div class="flex-1">
+              <h3 class="font-medium text-gray-800 line-clamp-2">${product.product_name}</h3>
+              <p class="text-purple-600 font-semibold">₹${price.toLocaleString()}</p>
               <div class="flex items-center mt-2 gap-2">
-                <button onclick="updateQty('${item.id}', -1)" class="px-2 py-1 bg-gray-200 rounded">-</button>
-                <span id="qty-${item.id}">${qty}</span>
-                <button onclick="updateQty('${item.id}', 1)" class="px-2 py-1 bg-gray-200 rounded">+</button>
+                <button onclick="updateQty('${item.id}', -1)" class="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-sm">
+                  <i class="fas fa-minus"></i>
+                </button>
+                <span id="qty-${item.id}" class="px-3 py-1 bg-gray-50 rounded min-w-[2rem] text-center">${qty}</span>
+                <button onclick="updateQty('${item.id}', 1)" class="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-sm">
+                  <i class="fas fa-plus"></i>
+                </button>
               </div>
             </div>
           </div>
           <div class="text-right">
-            <p>Subtotal: ₹<span id="subtotal-${item.id}">${subtotal.toLocaleString()}</span></p>
-            <button onclick="removeFromCart('${item.id}')" class="mt-2 text-red-500 hover:underline text-sm">Remove</button>
+            <p class="font-semibold text-gray-800">₹<span id="subtotal-${item.id}">${subtotal.toLocaleString()}</span></p>
+            <button onclick="removeFromCart('${item.id}')" class="mt-2 text-red-500 hover:text-red-700 text-sm">
+              <i class="fas fa-trash mr-1"></i>Remove
+            </button>
           </div>
         `;
         cartItemsContainer.appendChild(div);
       }
 
-      cartTotalElement.textContent = total.toLocaleString();
+      totalAmount = total + 29; // Adding packaging charges
+      itemsTotalElement.textContent = `₹${total.toLocaleString()}`;
+      totalAmountElement.textContent = `₹${totalAmount.toLocaleString()}`;
+
+      // Enable place order button if user is logged in and has address
+      if (currentUser && document.getElementById('selectedAddress').classList.contains('hidden') === false) {
+        placeOrderBtn.disabled = false;
+      }
     }
 
     function updateQty(id, change) {
@@ -126,13 +417,13 @@
       const qty = cart[index].quantity;
       document.getElementById(`qty-${id}`).textContent = qty;
 
-      const priceText = document.querySelector(`#cart-row-${id} p.text-gray-600`)?.textContent || "0";
+      // Recalculate subtotal
+      const priceText = document.querySelector(`#subtotal-${id}`).closest('.text-right').previousElementSibling.querySelector('.text-purple-600').textContent;
       const price = parseFloat(priceText.replace(/[₹,]/g, "")) || 0;
       const subtotal = price * qty;
 
       document.getElementById(`subtotal-${id}`).textContent = subtotal.toLocaleString();
-
-      updateTotal();
+      updateCartTotal();
     }
 
     function removeFromCart(id) {
@@ -140,42 +431,140 @@
       cart = cart.filter(item => item.id !== id);
       localStorage.setItem("cart", JSON.stringify(cart));
 
-      const itemEl = document.getElementById(`cart-row-${id}`);
-      if (itemEl) itemEl.remove();
-
-      updateTotal();
+      // Reload cart
+      waitForFirebase();
 
       if (cart.length === 0) {
-        cartItemsContainer.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
-        cartTotalElement.textContent = '0';
+        placeOrderBtn.disabled = true;
       }
     }
 
-    function updateTotal() {
+    function updateCartTotal() {
       const cart = JSON.parse(localStorage.getItem("cart")) || [];
       let total = 0;
 
       cart.forEach(item => {
-        const priceText = document.querySelector(`#cart-row-${item.id} p.text-gray-600`)?.textContent || "0";
-        const price = parseFloat(priceText.replace(/[₹,]/g, "")) || 0;
-        const qty = parseInt(item.quantity) || 1;
-        total += price * qty;
+        const subtotalElement = document.getElementById(`subtotal-${item.id}`);
+        if (subtotalElement) {
+          const subtotal = parseFloat(subtotalElement.textContent.replace(/,/g, ''));
+          total += subtotal;
+        }
       });
 
-      cartTotalElement.textContent = total.toLocaleString();
+      totalAmount = total + 29;
+      itemsTotalElement.textContent = `₹${total.toLocaleString()}`;
+      totalAmountElement.textContent = `₹${totalAmount.toLocaleString()}`;
     }
 
-    function buyNow() {
+    async function placeOrder() {
+      if (!currentUser) {
+        showLoginModal();
+        return;
+      }
+
+      if (currentCart.length === 0) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Cart Empty',
+          text: 'Please add items to your cart before placing an order.'
+        });
+        return;
+      }
+
+      try {
+        placeOrderBtn.disabled = true;
+        placeOrderBtn.innerHTML = `
+          <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+          Processing...
+        `;
+
+        const { db, collection, addDoc, serverTimestamp } = window.firebaseModules;
+        
+        // Generate order ID
+        const orderId = 'ORD' + Date.now() + Math.random().toString(36).substr(2, 5).toUpperCase();
+        
+        // Prepare order data
+        const orderData = {
+          orderId: orderId,
+          customerId: currentUser.id,
+          customerPhone: currentUser.phoneNumber,
+          customerName: `${currentUser.firstName} ${currentUser.lastName}`,
+          items: currentCart,
+          totalAmount: totalAmount,
+          deliveryAddress: currentUser.addresses.find(addr => addr.isDefault) || currentUser.addresses[0],
+          paymentMethod: 'cod',
+          orderStatus: 'placed',
+          createdAt: serverTimestamp(),
+          expectedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
+        };
+
+        // Save order to Firestore
+        await addDoc(collection(db, "orders"), orderData);
+
+        // Clear cart
+        localStorage.removeItem("cart");
+        
+        // Show success modal
+        document.getElementById('orderId').textContent = orderId;
+        document.getElementById('successModal').classList.remove('hidden');
+
+      } catch (error) {
+        console.error('Error placing order:', error);
+        Swal.fire({
+          icon: 'error',
+          title: 'Order Failed',
+          text: 'Failed to place order. Please try again.'
+        });
+        
+        placeOrderBtn.disabled = false;
+        placeOrderBtn.innerHTML = `
+          <i class="fas fa-lock mr-2"></i>
+          <span>Place Order</span>
+        `;
+      }
+    }
+
+    function showLoginModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function hideLoginModal() {
+      document.getElementById('loginModal').classList.add('hidden');
+      window.location.href = 'index.html';
+    }
+
+    function redirectToLogin() {
+      window.location.href = 'login.html?redirect=checkout.html';
+    }
+
+    function goToHome() {
+      window.location.href = 'index.html';
+    }
+
+    function logout() {
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('isLoggedIn');
+      window.location.href = 'index.html';
+    }
+
+    function changeAddress() {
+      // For now, just show the current address
       Swal.fire({
-        icon: "success",
-        title: "Order placed!",
-        text: "Thank you for shopping with us.",
+        icon: 'info',
+        title: 'Address Management',
+        text: 'Address management feature will be available soon!'
       });
-      localStorage.removeItem("cart");
-      cartItemsContainer.innerHTML = '<p class="text-gray-500">Your cart is empty.</p>';
-      cartTotalElement.textContent = '0';
     }
 
+    function showAddAddressForm() {
+      Swal.fire({
+        icon: 'info',
+        title: 'Add Address',
+        text: 'Add new address feature will be available soon!'
+      });
+    }
+
+    // Initialize checkout
     waitForFirebase();
   </script>
 </body>
